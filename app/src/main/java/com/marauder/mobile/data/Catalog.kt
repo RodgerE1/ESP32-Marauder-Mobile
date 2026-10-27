@@ -111,10 +111,6 @@ sealed interface MenuAction {
 
     /** Open the firmware flasher / updater. */
     data object OpenFlash : MenuAction
-
-    /** Open the Evil Portal screen: pick an HTML page on the phone, upload it to
-     *  the device (no SD card), target a scanned AP, run, and watch credentials. */
-    data object OpenEvilPortal : MenuAction
 }
 
 data class MenuItem(
@@ -147,8 +143,8 @@ object Catalog {
                 id = "main",
                 title = "Marauder",
                 items = listOf(
-                    MenuItem("WiFi", "Sniffers · Scanners · Attacks", Icons.Filled.Wifi, Accent.WIFI, MenuAction.Submenu("wifi")),
-                    MenuItem("Bluetooth", "Sniffers · Attacks", Icons.Filled.Bluetooth, Accent.BLUETOOTH, MenuAction.Submenu("bluetooth")),
+                    MenuItem("WiFi", "Sniffers · Scanners", Icons.Filled.Wifi, Accent.WIFI, MenuAction.Submenu("wifi")),
+                    MenuItem("Bluetooth", "Sniffers · AirTags", Icons.Filled.Bluetooth, Accent.BLUETOOTH, MenuAction.Submenu("bluetooth")),
                     MenuItem("GPS", "Data · NMEA · Tracker · POI", Icons.Filled.MyLocation, Accent.GPS, MenuAction.Submenu("gps")),
                     MenuItem("Device", "Info · Files · Firmware", Icons.Filled.DeveloperBoard, Accent.DEVICE, MenuAction.Submenu("device")),
                     MenuItem("Flash & Update", "Flash / update firmware", Icons.Filled.SystemUpdate, Accent.DEVICE, MenuAction.OpenFlash),
@@ -164,7 +160,6 @@ object Catalog {
                 listOf(
                     MenuItem("Sniffers", "Passive capture & detect", Icons.Filled.Sensors, Accent.SNIFFER, MenuAction.Submenu("wifi_sniffers")),
                     MenuItem("Scanners", "Network / port scans", Icons.Filled.Radar, Accent.SCANNER, MenuAction.Submenu("wifi_scanners")),
-                    MenuItem("Attacks", "Deauth · Beacon · Portal", Icons.Filled.Bolt, Accent.ATTACK, MenuAction.Submenu("wifi_attacks")),
                     MenuItem("General", "Lists · MACs · Join", Icons.Filled.Tune, Accent.GENERAL, MenuAction.Submenu("wifi_general")),
                 ),
             ),
@@ -210,40 +205,6 @@ object Catalog {
         )
         add(
             MenuScreen(
-                "wifi_attacks", "Attacks",
-                listOf(
-                    MenuItem("Beacon Spam List", "attack -t beacon -l", Icons.Filled.Campaign, Accent.ATTACK, MenuAction.Send("attack -t beacon -l"), dangerous = true),
-                    MenuItem("Beacon Spam Random", "attack -t beacon -r", Icons.Filled.Shuffle, Accent.ATTACK, MenuAction.Send("attack -t beacon -r"), dangerous = true),
-                    MenuItem("Funny SSID Beacon", "attack -t funny", Icons.Filled.Mood, Accent.ATTACK, MenuAction.Send("attack -t funny"), dangerous = true),
-                    MenuItem("Rick Roll Beacon", "attack -t rickroll", Icons.Filled.MusicNote, Accent.ATTACK, MenuAction.Send("attack -t rickroll"), dangerous = true),
-                    MenuItem("Probe Req Flood", "attack -t probe", Icons.Filled.Podcasts, Accent.ATTACK, MenuAction.Send("attack -t probe"), dangerous = true),
-                    MenuItem("Evil Portal", "Captive portal", Icons.Filled.Language, Accent.ATTACK, MenuAction.Submenu("evil_portal"), dangerous = true),
-                    MenuItem("Deauth Flood", "attack -t deauth", Icons.Filled.WifiOff, Accent.ATTACK, MenuAction.Send("attack -t deauth"), dangerous = true),
-                    MenuItem("AP Clone Spam", "attack -t beacon -a", Icons.Filled.ContentCopy, Accent.ATTACK, MenuAction.Send("attack -t beacon -a"), dangerous = true),
-                    MenuItem("Deauth Targeted", "attack -t deauth -c", Icons.Filled.GpsFixed, Accent.ATTACK, MenuAction.Send("attack -t deauth -c"), dangerous = true),
-                    MenuItem("Karma", "karma", Icons.Filled.Whatshot, Accent.ATTACK, MenuAction.Send("karma"), dangerous = true),
-                    MenuItem("Bad Msg", "attack -t badmsg", Icons.Filled.Warning, Accent.ATTACK, MenuAction.Send("attack -t badmsg"), dangerous = true),
-                    MenuItem("Bad Msg Targeted", "attack -t badmsg -c", Icons.Filled.Warning, Accent.ATTACK, MenuAction.Send("attack -t badmsg -c"), dangerous = true),
-                    MenuItem("Assoc Sleep", "attack -t sleep", Icons.Filled.Bedtime, Accent.ATTACK, MenuAction.Send("attack -t sleep"), dangerous = true),
-                    MenuItem("Assoc Sleep Targ", "attack -t sleep -c", Icons.Filled.Bedtime, Accent.ATTACK, MenuAction.Send("attack -t sleep -c"), dangerous = true),
-                    MenuItem("SAE Commit Flood", "attack -t sae", Icons.Filled.Lock, Accent.ATTACK, MenuAction.Send("attack -t sae"), dangerous = true),
-                    MenuItem("Channel Switch", "attack -t csa", Icons.Filled.SwapHoriz, Accent.ATTACK, MenuAction.Send("attack -t csa"), dangerous = true),
-                    MenuItem("Quiet Time", "attack -t quiet", Icons.AutoMirrored.Filled.VolumeOff, Accent.ATTACK, MenuAction.Send("attack -t quiet"), dangerous = true),
-                ),
-            ),
-        )
-        add(
-            MenuScreen(
-                "evil_portal", "Evil Portal",
-                listOf(
-                    MenuItem("Portal (phone HTML)", "Pick a page from the phone, no SD card", Icons.Filled.Language, Accent.ATTACK, MenuAction.OpenEvilPortal, dangerous = true),
-                    MenuItem("Scan APs first", "Find a target AP to impersonate", Icons.Filled.Wifi, Accent.GENERAL, MenuAction.OpenList(ListType.ACCESS_POINTS)),
-                    MenuItem("Start (SD index.html)", "evilportal -c start -w index.html", Icons.Filled.PlayCircle, Accent.ATTACK, MenuAction.Send("evilportal -c start -w index.html"), dangerous = true),
-                ),
-            ),
-        )
-        add(
-            MenuScreen(
                 "wifi_general", "General",
                 listOf(
                     MenuItem("Scan AP/STA", "scanall", Icons.Filled.PermScanWifi, Accent.GENERAL, MenuAction.Send("scanall")),
@@ -277,7 +238,6 @@ object Catalog {
                 "bluetooth", "Bluetooth",
                 listOf(
                     MenuItem("Sniffers", "Detect & analyze", Icons.AutoMirrored.Filled.BluetoothSearching, Accent.BLUETOOTH, MenuAction.Submenu("bt_sniffers")),
-                    MenuItem("Attacks", "BLE spam & spoof", Icons.Filled.Bolt, Accent.ATTACK, MenuAction.Submenu("bt_attacks")),
                 ),
             ),
         )
@@ -296,22 +256,6 @@ object Catalog {
                 ),
             ),
         )
-        add(
-            MenuScreen(
-                "bt_attacks", "Attacks",
-                listOf(
-                    MenuItem("Sour Apple", "blespam -t sourapple", Icons.Filled.PhoneIphone, Accent.ATTACK, MenuAction.Send("blespam -t sourapple"), dangerous = true),
-                    MenuItem("Apple Juice", "blespam -t applejuice", Icons.Filled.PhoneIphone, Accent.ATTACK, MenuAction.Send("blespam -t applejuice"), dangerous = true),
-                    MenuItem("Swiftpair Spam", "blespam -t windows", Icons.Filled.DesktopWindows, Accent.ATTACK, MenuAction.Send("blespam -t windows"), dangerous = true),
-                    MenuItem("Samsung BLE Spam", "blespam -t samsung", Icons.Filled.Smartphone, Accent.ATTACK, MenuAction.Send("blespam -t samsung"), dangerous = true),
-                    MenuItem("Google BLE Spam", "blespam -t google", Icons.Filled.Android, Accent.ATTACK, MenuAction.Send("blespam -t google"), dangerous = true),
-                    MenuItem("Flipper BLE Spam", "blespam -t flipper", Icons.Filled.SmartToy, Accent.ATTACK, MenuAction.Send("blespam -t flipper"), dangerous = true),
-                    MenuItem("BLE Spam All", "blespam -t all", Icons.Filled.Campaign, Accent.ATTACK, MenuAction.Send("blespam -t all"), dangerous = true),
-                    MenuItem("Spoof Airtag", "spoofat -t 0", Icons.Filled.Luggage, Accent.ATTACK, MenuAction.Send("spoofat -t 0"), dangerous = true),
-                ),
-            ),
-        )
-
         // ---------------- GPS ----------------
         add(
             MenuScreen(

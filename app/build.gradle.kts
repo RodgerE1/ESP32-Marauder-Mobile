@@ -19,14 +19,14 @@ val keystoreProps = Properties().apply {
 
 android {
     namespace = "com.marauder.mobile"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.marauder.mobile"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 6
-        versionName = "1.3.3"
+        targetSdk = 36
+        versionCode = 7
+        versionName = "1.3.3-scanner"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

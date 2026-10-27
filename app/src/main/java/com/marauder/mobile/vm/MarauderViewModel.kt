@@ -71,21 +71,6 @@ data class CaptureUiState(
     val rows: Int = 0,              // wardrive rows written
 )
 
-/** Evil Portal with a host-supplied page: pick an HTML file on the phone, stream
- *  it to the device (no SD card), target a scanned AP, then run and watch creds. */
-data class EvilPortalUiState(
-    val phase: Phase = Phase.NeedsHtml,
-    val fileName: String? = null,
-    val htmlBytes: Int = 0,
-    val deviceMax: Int = 0,         // MAX_HTML_SIZE reported by the device (0 until known)
-    val targetApIndex: Int? = null,
-    val message: String? = null,
-    val creds: List<DeviceMessage.Cred> = emptyList(),
-) {
-    enum class Phase { NeedsHtml, Uploading, Ready, Running, Error }
-    val htmlReady: Boolean get() = phase == Phase.Ready || phase == Phase.Running
-}
-
 class MarauderViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as MarauderApp
@@ -146,14 +131,6 @@ class MarauderViewModel(application: Application) : AndroidViewModel(application
     private val _capture = MutableStateFlow(CaptureUiState())
     val capture: StateFlow<CaptureUiState> = _capture.asStateFlow()
 
-    // --- Evil Portal with a host-supplied page (SD-card replacement) ---------
-    private val _evilPortal = MutableStateFlow(EvilPortalUiState())
-    val evilPortal: StateFlow<EvilPortalUiState> = _evilPortal.asStateFlow()
-
-    // Upload handshake replies ({"t":"portal",...}); the upload coroutine awaits
-    // "recv" then "set". extraBufferCapacity so tryEmit never drops a reply.
-    private val portalEvents = MutableSharedFlow<DeviceMessage.Portal>(extraBufferCapacity = 8)
-    private var portalJob: Job? = null
 
     /** True once the connected firmware advertised the proto ≥ 2 "capstream" cap. */
     private var captureCapable = false
@@ -540,125 +517,6 @@ class MarauderViewModel(application: Application) : AndroidViewModel(application
         _flash.value = FlashUiState()
     }
 
-    // --- Evil Portal (host-supplied HTML page) -------------------------------
-
-    /** Reset the Evil Portal flow — call when the screen opens. */
-    fun resetEvilPortal() {
-        portalJob?.cancel()
-        _evilPortal.value = EvilPortalUiState()
-    }
-
-    /** Choose which scanned AP (by list index) the portal impersonates. */
-    fun setPortalTargetAp(index: Int?) {
-        _evilPortal.value = _evilPortal.value.copy(targetApIndex = index)
-    }
-
-    /**
-     * Stream a phone-picked HTML page into the device's Evil Portal buffer so no
-     * SD card is needed. Sends `evilportal -c sethtmlstr <len>`, waits for the
-     * device's `{"t":"portal","state":"recv"}` reply, streams exactly <len> bytes,
-     * then verifies the `{"t":"portal","state":"set"}` reply (byte count + CRC-32).
-     */
-    fun uploadPortalHtml(bytes: ByteArray, fileName: String) {
-        if (bytes.isEmpty()) { _snackbar.tryEmit("Empty HTML file"); return }
-        portalJob?.cancel()
-        portalJob = viewModelScope.launch {
-            _evilPortal.value = _evilPortal.value.copy(
-                phase = EvilPortalUiState.Phase.Uploading,
-                fileName = fileName,
-                htmlBytes = bytes.size,
-                message = "Uploading ${bytes.size} B…",
-            )
-            var recv: DeviceMessage.Portal? = null
-            var set: DeviceMessage.Portal? = null
-            // Hold the serial write lock across the whole handshake so a background
-            // `jsonstatus` poll can't inject bytes into the raw payload (which would
-            // corrupt it and fail the device's CRC check).
-            usb.withWriteLock {
-                coroutineScope {
-                    // Start listening BEFORE sending so the reply can't be missed.
-                    val recvWait = async { withTimeoutOrNull(3000) { portalEvents.first { it.state == "recv" } } }
-                    appendConsole("> evilportal -c sethtmlstr ${bytes.size}", LineKind.INPUT)
-                    usb.sendLineLocked("evilportal -c sethtmlstr ${bytes.size}")
-                    recv = recvWait.await()
-                    appendConsole(
-                        recv?.let { "portal ▸ recv ok (device max ${it.max} B)" }
-                            ?: "portal ▸ recv TIMEOUT — no reply in 3 s",
-                        LineKind.SYSTEM,
-                    )
-                    // Send the payload unless the device said its buffer is too small.
-                    if (recv?.max?.let { it in 1 until bytes.size } != true) {
-                        val setWait = async { withTimeoutOrNull(8000) { portalEvents.first { it.state == "set" } } }
-                        appendConsole("portal ▸ streaming ${bytes.size} B…", LineKind.SYSTEM)
-                        usb.sendRawLocked(bytes)
-                        set = setWait.await()
-                        appendConsole(
-                            set?.let { "portal ▸ set n=${it.bytes} crc=${it.crc} ok=${it.ok}" }
-                                ?: "portal ▸ set TIMEOUT — no confirm in 8 s",
-                            LineKind.SYSTEM,
-                        )
-                    } else {
-                        appendConsole("portal ▸ skipped: ${bytes.size} B > device max ${recv?.max} B", LineKind.SYSTEM)
-                    }
-                }
-            }
-
-            val r = recv
-            val s = set
-            val localCrc = Crc32.compute(bytes, 0, bytes.size, ByteArray(0), 0)
-            _evilPortal.value = when {
-                r != null && r.max in 1 until bytes.size -> _evilPortal.value.copy(
-                    phase = EvilPortalUiState.Phase.Error,
-                    deviceMax = r.max,
-                    message = "Page too large: ${bytes.size} B > device max ${r.max} B",
-                )
-                s == null -> _evilPortal.value.copy(
-                    phase = EvilPortalUiState.Phase.Error,
-                    message = "No confirmation from device — check the cable and retry",
-                )
-                s.ok && s.crc == localCrc -> _evilPortal.value.copy(
-                    phase = EvilPortalUiState.Phase.Ready,
-                    deviceMax = if (s.max > 0) s.max else _evilPortal.value.deviceMax,
-                    message = "Page set on device — ${s.bytes} B, CRC verified",
-                )
-                s.ok -> _evilPortal.value.copy(
-                    phase = EvilPortalUiState.Phase.Error,
-                    message = "CRC mismatch (device ${s.crc}, phone $localCrc) — retry",
-                )
-                else -> _evilPortal.value.copy(
-                    phase = EvilPortalUiState.Phase.Error,
-                    message = "Device rejected the upload (${s.bytes}/${bytes.size} B) — retry",
-                )
-            }
-        }
-    }
-
-    /** Start the portal on the chosen AP (the page must already be uploaded). */
-    fun startEvilPortal() {
-        val st = _evilPortal.value
-        if (!st.htmlReady) { _snackbar.tryEmit("Upload an HTML page first"); return }
-        st.targetApIndex?.let { runCommand("evilportal -c setap $it") }
-        runCommand("evilportal -c start")
-        _evilPortal.value = st.copy(phase = EvilPortalUiState.Phase.Running, creds = emptyList())
-        liveJob?.cancel()
-        liveJob = viewModelScope.launch {
-            delay(500)
-            while (isActive && usb.status.value == UsbSerialManager.Status.CONNECTED) {
-                usb.send("jsonstatus")
-                delay(1300)
-            }
-        }
-    }
-
-    /** Stop the running portal (mirrors Back / stopscan on the device). */
-    fun stopEvilPortal() {
-        liveJob?.cancel(); liveJob = null
-        runCommand("stopscan")
-        if (_evilPortal.value.phase == EvilPortalUiState.Phase.Running) {
-            _evilPortal.value = _evilPortal.value.copy(phase = EvilPortalUiState.Phase.Ready)
-        }
-    }
-
     /**
      * Download the firmware for [profile] from the pinned GitHub release and flash it
      * to [option] over USB. Frees the normal serial session first (the port can only
@@ -751,13 +609,10 @@ class MarauderViewModel(application: Application) : AndroidViewModel(application
             }
             is DeviceMessage.AnalyzerSample -> onSample(msg)
             is DeviceMessage.ChannelActivity -> onChannelActivity(msg)
-            is DeviceMessage.Portal -> portalEvents.tryEmit(msg)
-            is DeviceMessage.Cred -> {
-                _evilPortal.value = _evilPortal.value.copy(
-                    creds = _evilPortal.value.creds + msg,
-                )
-                appendConsole("⚑ credential — ${msg.user} : ${msg.pass}", LineKind.OUTPUT)
-            }
+            // Evil Portal was removed from this passive-scanner build; the proto-1
+            // firmware never emits these, but the sealed `when` must stay exhaustive.
+            is DeviceMessage.Portal -> {}
+            is DeviceMessage.Cred -> {}
             is DeviceMessage.Unknown -> {}
         }
     }
